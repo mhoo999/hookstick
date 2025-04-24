@@ -94,6 +94,8 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
 
       const updatedSites = [...sites, site];
       saveSites(updatedSites);
+      // 새로 추가된 사이트를 선택 목록에 추가
+      onSelectedSitesChange([...selectedSites, site.id]);
       setNewUrl('');
     } catch (error) {
       alert('올바른 URL 형식을 입력해주세요.');

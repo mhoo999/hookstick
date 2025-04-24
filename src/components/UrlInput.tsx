@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Product } from '@/types/product';
 import ProductList from './ProductList';
 import SiteList from './SiteList';
@@ -20,8 +20,23 @@ export default function UrlInput() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [daysToSearch, setDaysToSearch] = useState(7);
-  const [selectedSites, setSelectedSites] = useState<string[]>([DEFAULT_SITE.id]);
+  const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [isSiteListOpen, setIsSiteListOpen] = useState(false);
+
+  // 페이지 로드 시 사이트 목록 가져오기
+  useEffect(() => {
+    const savedSites = localStorage.getItem(STORAGE_KEY);
+    if (savedSites) {
+      try {
+        const loadedSites = JSON.parse(savedSites);
+        if (Array.isArray(loadedSites) && loadedSites.length > 0) {
+          setSelectedSites(loadedSites.map(site => site.id));
+        }
+      } catch (error) {
+        console.error('Error loading sites:', error);
+      }
+    }
+  }, []);
 
   const handleSelectedSitesChange = useCallback((siteIds: string[]) => {
     setSelectedSites(siteIds);

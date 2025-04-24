@@ -34,7 +34,7 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
           href={product.url} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="block border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1"
+          className="block border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1 bg-white"
         >
           <div className="relative h-48">
             <Image
@@ -44,12 +44,12 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
               className="object-cover"
             />
           </div>
-          <div className="p-4 space-y-2">
-            <h3 className="font-bold text-black text-lg leading-snug line-clamp-2">
+          <div className="p-4 space-y-2 bg-white">
+            <h3 className="font-bold text-black text-lg leading-snug line-clamp-2 min-h-[3.5rem]">
               {product.name}
             </h3>
             <p className="text-gray-700 font-medium">
-              {product.price}
+              {product.price.split(' ')[0]}
             </p>
             <p className="text-sm text-gray-500">
               출처: Out of Line

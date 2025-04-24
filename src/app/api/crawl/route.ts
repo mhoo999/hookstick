@@ -1,123 +1,155 @@
 import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
-import { Product } from '@/types/product';
+
+interface ProductElement extends Element {
+  querySelector(selectors: string): HTMLElement | null;
+  querySelectorAll(selectors: string): NodeListOf<HTMLElement>;
+}
+
+interface DebugInfo {
+  title: string;
+  url: string;
+  bodyClasses: string;
+  productListElements: {
+    prdList: number;
+    listItems: number;
+    images: number;
+    names: number;
+  };
+}
 
 export async function POST(request: Request) {
-  let browser;
-  try {
-    const { url } = await request.json();
-    console.log('Crawling URL:', url);
+  const browser = await chromium.launch();
 
-    browser = await chromium.launch({
-      headless: true
-    });
+  try {
+    const { url, daysToSearch, baseUrl } = await request.json();
+    console.log('Crawling URL:', url);
+    console.log('Days to search:', daysToSearch);
 
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1920, height: 1080 }
     });
 
     const page = await context.newPage();
     
-    const productListUrl = 'https://outofline.co.kr/product/list.html?cate_no=24';
-    console.log('Navigating to product list URL:', productListUrl);
-    
-    await page.goto(productListUrl);
+    // 페이지 이동
+    console.log('Navigating to URL:', url);
+    await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForLoadState('networkidle');
-    
+
+    // 상품 목록 로딩 대기
     console.log('Waiting for products to load...');
-    await page.waitForSelector('.prdList', { timeout: 10000 })
-      .catch(() => console.log('Product list selector not found'));
-    
-    await page.waitForTimeout(2000);
-    
-    console.log('Page loaded, extracting products...');
-    console.log('Current URL:', page.url());
-    
-    // 상품 정보 추출
-    const products = await page.evaluate(() => {
-      const items: any[] = [];
+    await page.waitForTimeout(2000); // 추가 대기 시간
+
+    // 디버그 정보 수집
+    const title = await page.title();
+    const currentUrl = page.url();
+    const bodyClasses = await page.evaluate(() => document.body.className);
+
+    // 상품 목록 요소 찾기 시도
+    const products = await page.evaluate((baseUrl) => {
+      const products = [];
       
-      document.querySelectorAll('.prdList > li.xans-record-').forEach((element) => {
+      // 여러 선택자 시도
+      const selectors = [
+        { container: '.prdList', items: '.prdList > li' },
+        { container: '.item-list', items: '.item-list > .item' },
+        { container: '.product-list', items: '.product-list > .product' },
+        { container: '#productList', items: '#productList > div' }
+      ];
+      
+      let foundProducts: ProductElement[] = [];
+      
+      for (const selector of selectors) {
+        const container = document.querySelector(selector.container);
+        if (container) {
+          const items = document.querySelectorAll<ProductElement>(selector.items);
+          if (items.length > 0) {
+            foundProducts = Array.from(items);
+            break;
+          }
+        }
+      }
+
+      // 디버그용 요소 카운트
+      const debugCounts = {
+        prdList: document.querySelectorAll('.prdList').length,
+        listItems: document.querySelectorAll('.prdList > li').length,
+        images: document.querySelectorAll('.prdList img').length,
+        names: document.querySelectorAll('.prdList .name').length
+      };
+      console.log('Product list elements:', debugCounts);
+
+      for (const item of foundProducts) {
         try {
-          const imgElement = element.querySelector('.thumbnail img.thumbs');
-          const nameElement = element.querySelector('.name span');
-          const priceElement = element.querySelector('.price');
-          const linkElement = element.querySelector('.thumbnail > a');
-          const soldOutElement = element.querySelector('.icon_img[alt="품절"]');
-
-          if (imgElement && nameElement) {
-            const thumbnail = imgElement.getAttribute('src') || '';
-            const name = nameElement.textContent?.trim() || '';
-            const price = priceElement?.textContent?.trim().replace(/\s+/g, ' ') || (soldOutElement ? '품절' : '');
-            const productUrl = linkElement?.getAttribute('href') || '';
-
-            // URL이 이미 절대 경로인지 확인하고, 상대 경로인 경우에만 도메인을 추가
-            const absoluteThumbnail = thumbnail.startsWith('http') 
-              ? thumbnail 
-              : thumbnail.startsWith('//')
-                ? `https:${thumbnail}`
-                : `https://outofline.co.kr${thumbnail}`;
+          // 여러 선택자 시도
+          const thumbnail = 
+            item.querySelector('img')?.getAttribute('src') || 
+            item.querySelector('.thumbnail img')?.getAttribute('src') ||
+            item.querySelector('.prdImg img')?.getAttribute('src');
             
-            const absoluteUrl = productUrl.startsWith('http') 
-              ? productUrl 
-              : `https://outofline.co.kr${productUrl}`;
+          const name = 
+            item.querySelector('.name')?.textContent?.trim() ||
+            item.querySelector('.prdName')?.textContent?.trim() ||
+            item.querySelector('h2, h3, h4')?.textContent?.trim();
+            
+          const price = 
+            item.querySelector('.price')?.textContent?.trim() ||
+            item.querySelector('.prdPrice')?.textContent?.trim();
+            
+          let url = 
+            item.querySelector('a')?.getAttribute('href') ||
+            item.querySelector('.thumbnail a')?.getAttribute('href') ||
+            item.querySelector('.prdImg a')?.getAttribute('href');
 
-            console.log('Found product:', { name, price, thumbnail: absoluteThumbnail });
+          // URL이 상대 경로인 경우 baseUrl과 결합
+          if (url && !url.startsWith('http')) {
+            url = new URL(url, baseUrl).toString();
+          }
 
-            items.push({
-              thumbnail: absoluteThumbnail,
+          if (thumbnail && name && price && url) {
+            products.push({
+              thumbnail: thumbnail.startsWith('http') ? thumbnail : `${baseUrl}${thumbnail}`,
               name,
-              price,
-              url: absoluteUrl
+              price: price.replace(/[^0-9]/g, ''),
+              url,
+              date: new Date().toISOString()
             });
           }
-        } catch (err) {
-          console.error('Error processing element:', err);
+        } catch (error) {
+          console.error('Error processing product:', error);
         }
-      });
+      }
 
-      return items;
-    });
+      return { 
+        products, 
+        debugInfo: { 
+          title: document.title, 
+          url: window.location.href, 
+          bodyClasses: document.body.className, 
+          productListElements: debugCounts 
+        } 
+      };
+    }, baseUrl);
 
-    console.log(`Found ${products.length} products`);
+    // 디버그 정보 출력
+    console.log('Page loaded, extracting products...');
+    console.log('Current URL:', products.debugInfo.url);
+    console.log('Found', products.products.length, 'products');
 
-    if (products.length === 0) {
-      await page.screenshot({ path: 'debug-screenshot.png', fullPage: true });
+    // 상품을 찾지 못한 경우 스크린샷 캡처
+    if (products.products.length === 0) {
+      await page.screenshot({ path: 'debug-screenshot.png' });
       console.log('Captured debug screenshot');
-      
-      const debugInfo = await page.evaluate(() => ({
-        title: document.title,
-        url: window.location.href,
-        bodyClasses: document.body.className,
-        productListElements: {
-          prdList: document.querySelectorAll('.prdList').length,
-          listItems: document.querySelectorAll('.prdList > li.xans-record-').length,
-          images: document.querySelectorAll('.prdList .thumbs').length,
-          names: document.querySelectorAll('.prdList .name span').length
-        }
-      }));
-      console.log('Debug info:', debugInfo);
+      console.log('Debug info:', products.debugInfo);
     }
-    
-    return NextResponse.json({ products });
-  } catch (error) {
-    console.error('Crawling error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    });
 
-    return NextResponse.json(
-      { 
-        error: 'Failed to crawl the website',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return NextResponse.json(products);
+  } catch (error) {
+    console.error('Error:', error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    await browser.close();
   }
 } 

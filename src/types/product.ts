@@ -1,6 +1,7 @@
 export interface Product {
-  thumbnail: string;
   name: string;
   price: string;
-  url?: string;
+  thumbnail: string;
+  url: string;
+  date?: string;
 } 

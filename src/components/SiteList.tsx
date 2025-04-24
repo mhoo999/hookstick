@@ -9,8 +9,6 @@ interface SiteListProps {
   onSelectedSitesChange: (siteIds: string[]) => void;
 }
 
-const DEFAULT_SITES: Site[] = [];
-
 const STORAGE_KEY = 'crawling-sites';
 
 const cleanUrl = (url: string): string => {
@@ -30,26 +28,34 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
 
   // 로컬 스토리지에서 사이트 목록 불러오기
   useEffect(() => {
-    const savedSites = localStorage.getItem(STORAGE_KEY);
-    if (savedSites) {
-      const loadedSites = JSON.parse(savedSites);
-      setSites(loadedSites);
-      // 모든 사이트 ID를 선택된 상태로 설정
-      onSelectedSitesChange(loadedSites.map((site: Site) => site.id));
-    } else {
-      setSites(DEFAULT_SITES);
-      // 기본 사이트도 선택된 상태로 설정
-      onSelectedSitesChange(DEFAULT_SITES.map(site => site.id));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SITES));
-    }
-  }, [onSelectedSitesChange]);
+    const loadSites = () => {
+      const savedSites = localStorage.getItem(STORAGE_KEY);
+      if (savedSites) {
+        const loadedSites = JSON.parse(savedSites);
+        setSites(loadedSites);
+        onSiteSelect(loadedSites);
+        onSelectedSitesChange(loadedSites.map((site: Site) => site.id));
+      } else {
+        setSites([]);
+        onSiteSelect([]);
+        onSelectedSitesChange([]);
+      }
+    };
+
+    loadSites();
+    // storage 이벤트 리스너 추가
+    window.addEventListener('storage', loadSites);
+    return () => window.removeEventListener('storage', loadSites);
+  }, [onSelectedSitesChange, onSiteSelect]);
 
   // 사이트 목록 저장
   const saveSites = (updatedSites: Site[]) => {
     setSites(updatedSites);
-    // 저장할 때마다 모든 사이트를 선택된 상태로 설정
+    onSiteSelect(updatedSites);
     onSelectedSitesChange(updatedSites.map(site => site.id));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSites));
+    // storage 이벤트 발생
+    window.dispatchEvent(new Event('storage'));
   };
 
   const handleAddSite = () => {

@@ -6,13 +6,6 @@ import ProductList from './ProductList';
 import SiteList from './SiteList';
 import { Site } from '@/types/site';
 
-const DEFAULT_SITE: Site = {
-  id: 'outofline',
-  name: 'Out of Line',
-  url: 'https://outofline.co.kr/product/list.html?cate_no=24',
-  baseUrl: 'https://outofline.co.kr'
-};
-
 const STORAGE_KEY = 'crawling-sites';
 
 export default function UrlInput() {
@@ -20,6 +13,8 @@ export default function UrlInput() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [isSiteListOpen, setIsSiteListOpen] = useState(false);
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
+  const [sites, setSites] = useState<Site[]>([]);
 
   // 페이지 로드 시 사이트 목록 가져오기
   useEffect(() => {
@@ -29,6 +24,7 @@ export default function UrlInput() {
         const loadedSites = JSON.parse(savedSites);
         if (Array.isArray(loadedSites) && loadedSites.length > 0) {
           setSelectedSites(loadedSites.map(site => site.id));
+          setSites(loadedSites);
         }
       } catch (error) {
         console.error('Error loading sites:', error);
@@ -40,6 +36,34 @@ export default function UrlInput() {
     setSelectedSites(siteIds);
   }, []);
 
+  const handleSiteSelect = useCallback((selectedSites: Site[]) => {
+    setSites(selectedSites);
+  }, []);
+
+  const handleShareSites = useCallback(() => {
+    const savedSites = localStorage.getItem(STORAGE_KEY);
+    if (savedSites) {
+      const sites = JSON.parse(savedSites);
+      const selectedSitesData = sites.filter((site: Site) => selectedSites.includes(site.id));
+      const shareUrl = `${window.location.origin}?sites=${encodeURIComponent(JSON.stringify(selectedSitesData))}`;
+      
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setShowCopiedToast(true);
+        setTimeout(() => setShowCopiedToast(false), 2000);
+      });
+    }
+  }, [selectedSites]);
+
+  const handleDeleteAllSites = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setSelectedSites([]);
+    setSites([]);
+    // 빈 배열을 저장하여 SiteList 컴포넌트의 리렌더링 트리거
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+    // storage 이벤트 발생
+    window.dispatchEvent(new Event('storage'));
+  }, []);
+
   const handleCrawlStart = async () => {
     try {
       setIsLoading(true);
@@ -48,7 +72,7 @@ export default function UrlInput() {
 
       const allProducts: Product[] = [];
       const savedSites = localStorage.getItem(STORAGE_KEY);
-      const sites: Site[] = savedSites ? JSON.parse(savedSites) : [DEFAULT_SITE];
+      const sites: Site[] = savedSites ? JSON.parse(savedSites) : [];
 
       // 선택된 모든 사이트를 순차적으로 크롤링
       for (const siteId of selectedSites) {
@@ -130,8 +154,28 @@ export default function UrlInput() {
         <div className="space-y-4">
           {isSiteListOpen && (
             <div className="border border-white/10 rounded-lg p-6">
+              <div className="flex justify-end gap-2 mb-4">
+                <button
+                  onClick={handleShareSites}
+                  className="px-2.5 py-1.5 text-sm text-white border border-white/20 rounded-lg hover:bg-white/10 flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  공유하기
+                </button>
+                <button
+                  onClick={handleDeleteAllSites}
+                  className="px-2.5 py-1.5 text-sm text-red-400 border border-red-400/20 rounded-lg hover:bg-red-400/10 flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  모두삭제
+                </button>
+              </div>
               <SiteList
-                onSiteSelect={() => {}}
+                onSiteSelect={handleSiteSelect}
                 selectedSites={selectedSites}
                 onSelectedSitesChange={handleSelectedSitesChange}
               />
@@ -150,9 +194,15 @@ export default function UrlInput() {
         </div>
       </div>
 
-      <div className="backdrop-blur-sm rounded-lg">
+      <div>
         <ProductList products={products} isLoading={isLoading} />
       </div>
+
+      {showCopiedToast && (
+        <div className="fixed bottom-4 right-4 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-lg">
+          URL이 클립보드에 복사되었습니다
+        </div>
+      )}
     </div>
   );
 } 

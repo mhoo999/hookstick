@@ -2,96 +2,195 @@ import { NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 
 export async function POST(request: Request) {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
 
   try {
     const { url, baseUrl } = await request.json();
+    console.log('Crawling URL:', url);
+    console.log('Base URL:', baseUrl);
     
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 }
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+      viewport: { width: 390, height: 844 },
+      // 불필요한 리소스 차단
+      bypassCSP: true,
+      ignoreHTTPSErrors: true,
+      // 캐시 활성화
+      serviceWorkers: 'block',
+      // 네트워크 요청 최적화
+      extraHTTPHeaders: {
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      }
     });
 
     const page = await context.newPage();
     
     try {
+      // 네트워크 요청 최적화
+      await page.route('**/*', (route) => {
+        const resourceType = route.request().resourceType();
+        // 불필요한 리소스 차단
+        if (['stylesheet', 'font', 'media'].includes(resourceType)) {
+          route.abort();
+        } else {
+          route.continue();
+        }
+      });
+
+      console.log('Navigating to page...');
       await page.goto(url, { 
         waitUntil: 'networkidle',
         timeout: 30000
       });
 
-      await page.waitForLoadState('domcontentloaded');
+      // JavaScript 로딩을 위한 대기
+      await page.waitForTimeout(5000);
+
+      // 페이지 스크롤하여 동적 로딩 유도
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
       await page.waitForTimeout(2000);
 
+      console.log('Page loaded, evaluating...');
       const products = await page.evaluate((baseUrl: string) => {
-        // 상품 목록 컨테이너에서 상품 아이템 선택
-        const items = Array.from(document.querySelectorAll('.prdList .xans-record-'));
-        console.log('Found items:', items.length);
+        // 모든 이미지 찾기
+        const images = Array.from(document.querySelectorAll('img'));
+        console.log('Total images found:', images.length);
 
-        return items
-          .filter(item => {
-            const img = item.querySelector('.prdImg img, .thumbnail img');
-            const link = item.querySelector('.prdImg a, .thumbnail a');
-            const name = item.querySelector('.name a, .description a');
-            return img && link && name;
-          })
-          .map(item => {
-            const img = item.querySelector('.prdImg img, .thumbnail img');
-            const link = item.querySelector('.prdImg a, .thumbnail a');
-            const name = item.querySelector('.name a, .description a');
+        return images
+          .filter(img => {
+            // 이미지 URL로 필터링
+            const src = img.src || img.getAttribute('data-original') || '';
+            const isProductImage = !src.includes('btn_') && 
+                                 !src.includes('button') &&
+                                 !src.includes('icon') &&
+                                 !src.includes('logo') &&
+                                 !src.includes('banner') &&
+                                 !src.includes('spacer') &&
+                                 !src.includes('blank') &&
+                                 !src.includes('arrow') &&
+                                 !src.includes('nav') &&
+                                 !src.includes('menu') &&
+                                 !src.includes('cart') &&
+                                 !src.includes('search') &&
+                                 !src.includes('close') &&
+                                 !src.includes('prev') &&
+                                 !src.includes('next') &&
+                                 !src.includes('top') &&
+                                 !src.includes('bottom') &&
+                                 !src.includes('left') &&
+                                 !src.includes('right') &&
+                                 !src.includes('share') &&
+                                 !src.includes('sns') &&
+                                 !src.includes('social') &&
+                                 !src.includes('kakao') &&
+                                 !src.includes('naver') &&
+                                 !src.includes('facebook') &&
+                                 !src.includes('instagram') &&
+                                 !src.includes('youtube') &&
+                                 !src.includes('twitter');
+
+            // 이미지가 상품 목록 컨테이너 내부에 있는지 확인
+            const productListSelectors = [
+              '.prdList',
+              '.item-list',
+              '.product-list',
+              '.goods-list',
+              '.xans-product',
+              '[class*="product"]',
+              '[class*="prd"]',
+              '[class*="item"]'
+            ];
             
-            // data-original 속성을 우선적으로 확인하고, 없으면 src 속성 사용
-            let thumbnail = img?.getAttribute('data-original') || img?.getAttribute('src') || '';
-            const url = link?.getAttribute('href') || '';
-            const title = name?.textContent?.trim() || '';
+            const isInProductList = productListSelectors.some(selector => 
+              img.closest(selector) !== null
+            );
 
-            // 이미지 URL 정규화
+            // 이미지 경로에서 상품 이미지 패턴 확인
+            const isProductPath = src.includes('/product/') || 
+                                src.includes('/goods/') || 
+                                src.includes('/item/') ||
+                                /\/[P|p]\d+\//.test(src);  // P1234 같은 상품 번호 패턴
+
+            // 이미지가 링크 내부에 있는지 확인
+            const link = img.closest('a');
+            const isInLink = link !== null;
+            
+            // 링크 URL이 상품 페이지를 가리키는지 확인
+            const linkUrl = link?.href || '';
+            const isProductLink = linkUrl.includes('/product/') || 
+                                linkUrl.includes('/goods/') || 
+                                linkUrl.includes('/item/') ||
+                                /\/[P|p]\d+/.test(linkUrl);
+
+            // 이미지 크기로 필터링 (너무 작은 이미지는 제외)
+            const width = img.naturalWidth || img.width;
+            const height = img.naturalHeight || img.height;
+            const isLargeEnough = width > 100 && height > 100;
+
+            // 이미지 비율 확인 (정사각형에 가까운 이미지 선호)
+            const ratio = width / height;
+            const isSquarish = ratio > 0.7 && ratio < 1.3;
+
+            console.log('Image check:', {
+              src,
+              isProductImage,
+              isInProductList,
+              isProductPath,
+              isInLink,
+              isProductLink,
+              width,
+              height,
+              ratio,
+              isSquarish,
+              isLargeEnough
+            });
+
+            return isProductImage && 
+                   isLargeEnough && 
+                   isSquarish &&
+                   isInLink && 
+                   (isInProductList || isProductPath || isProductLink);
+          })
+          .map(img => {
+            const link = img.closest('a');
+            let thumbnail = img.getAttribute('data-original') || img.src;
+            const url = link?.href || '';
+
             if (thumbnail) {
-              console.log('Original thumbnail URL:', thumbnail);
-              console.log('Product title:', title);
-              
-              // 상대 경로인 경우 절대 경로로 변환
               if (thumbnail.startsWith('//')) {
                 thumbnail = 'https:' + thumbnail;
               } else if (!thumbnail.startsWith('http')) {
-                // URL에서 도메인 부분 제거
                 const domainRegex = /^https?:\/\/[^\/]+/;
                 thumbnail = thumbnail.replace(domainRegex, '');
-                
-                // 중복된 슬래시 제거
                 thumbnail = thumbnail.replace(/\/+/g, '/');
-                
-                // 앞에 슬래시가 없는 경우 추가
                 if (!thumbnail.startsWith('/')) {
                   thumbnail = '/' + thumbnail;
                 }
-                
-                // baseUrl과 경로 조합
                 thumbnail = baseUrl + thumbnail;
               }
-              
-              console.log('Normalized thumbnail URL:', thumbnail);
             }
 
             return {
               thumbnail,
-              url: url.startsWith('http') ? url : `${baseUrl}${url}`,
-              title
+              url: url.startsWith('http') ? url : `${baseUrl}${url}`
             };
           })
-          .filter(product => {
-            // 버튼 이미지 등 불필요한 이미지 필터링
-            return !product.thumbnail.includes('btn_') && 
-                   !product.thumbnail.includes('button') &&
-                   !product.thumbnail.includes('icon') &&
-                   product.title; // 제목이 있는 상품만 포함
-          });
+          .filter(product => product.thumbnail)
+          .slice(0, 20);
       }, baseUrl);
 
+      console.log('Crawling completed. Found products:', products.length);
       await page.close();
 
       return NextResponse.json({ products });
     } catch (error) {
+      console.error('Page evaluation error:', error);
       throw error;
     }
   } catch (error) {

@@ -83,6 +83,8 @@ export default function UrlInput() {
         if (!site) continue;
 
         try {
+          console.log(`크롤링 시작: ${site.name} (${site.url})`);
+          
           const response = await fetch('/api/crawl', {
             method: 'POST',
             headers: {
@@ -95,39 +97,36 @@ export default function UrlInput() {
             }),
           });
 
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || response.statusText);
+          }
+
           const responseText = await response.text();
           let data;
           try {
             data = JSON.parse(responseText);
           } catch (e) {
-            console.error(`Invalid JSON response from ${site.url}:`, responseText);
-            alert(`${site.name} 크롤링 실패: 서버 응답이 올바르지 않습니다.`);
-            continue;
-          }
-
-          if (!response.ok) {
-            console.error(`Failed to crawl ${site.url}:`, data);
-            alert(`${site.name} 크롤링 실패: ${data.message || response.statusText || '서버에서 오류가 발생했습니다.'}`);
-            continue;
+            console.error(`응답 데이터 파싱 실패:`, responseText);
+            throw new Error(`${site.name}: 서버 응답이 올바르지 않습니다.`);
           }
 
           if (!data.products || !Array.isArray(data.products)) {
-            console.error(`Invalid response format from ${site.url}:`, data);
-            alert(`${site.name}의 응답 형식이 올바르지 않습니다.`);
-            continue;
+            console.error(`잘못된 응답 형식:`, data);
+            throw new Error(`${site.name}: 응답 형식이 올바르지 않습니다.`);
           }
 
-          console.log(`Successfully crawled ${site.name}:`, data.products.length, 'products found');
+          console.log(`크롤링 완료: ${site.name}, ${data.products.length}개 상품 발견`);
           allProducts.push(...data.products);
         } catch (error) {
-          console.error(`Error crawling ${site.url}:`, error);
-          alert(`${site.name} 크롤링 중 오류 발생: ${error instanceof Error ? error.message : '네트워크 오류가 발생했습니다.'}`);
+          console.error(`${site.name} 크롤링 실패:`, error);
+          alert(`${site.name} 크롤링 실패: ${error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'}`);
         }
       }
 
       setProducts(allProducts);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('크롤링 오류:', error);
       alert(error instanceof Error ? error.message : '크롤링 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);

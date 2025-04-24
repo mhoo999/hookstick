@@ -55,116 +55,118 @@ async function crawlWithRetry(url: string, baseUrl: string, limit: number, retry
     });
 
     // 상품 정보 추출
-    const products = await page.evaluate(({ baseUrl, excludedKeywords, productPathKeywords }) => {
-      const items: Product[] = [];
-      
-      // 상품 컨테이너 선택자들
-      const productContainerSelectors = [
-        '.prd_list', '.product_list', '.goods_list', '.item_list',
-        '[class*="product-list"]', '[class*="productList"]',
-        '[class*="goods-list"]', '[class*="goodsList"]',
-        '[class*="item-list"]', '[class*="itemList"]',
-        '[class*="product_wrap"]', '[class*="productWrap"]'
-      ];
-
-      // 가격 선택자들
-      const priceSelectors = [
-        '[class*="price"]', '[class*="Price"]',
-        '[class*="cost"]', '[class*="Cost"]',
-        '[class*="won"]', '[class*="Won"]'
-      ];
-
-      // 상품 컨테이너 내부의 링크만 검색
-      const containers = productContainerSelectors
-        .map(selector => Array.from(document.querySelectorAll(selector)))
-        .flat();
-
-      if (containers.length === 0) {
-        // 컨테이너를 찾지 못한 경우, 전체 문서에서 검색
-        containers.push(document.body);
-      }
-
-      containers.forEach(container => {
-        const links = container.querySelectorAll('a');
+    const products = await page.evaluate(
+      ({ baseUrl, excludedKeywords, productPathKeywords }) => {
+        const items = [];
         
-        links.forEach(link => {
-          const url = link.href;
-          if (!url || !url.includes(baseUrl)) return;
+        // 상품 컨테이너 선택자들
+        const productContainerSelectors = [
+          '.prd_list', '.product_list', '.goods_list', '.item_list',
+          '[class*="product-list"]', '[class*="productList"]',
+          '[class*="goods-list"]', '[class*="goodsList"]',
+          '[class*="item-list"]', '[class*="itemList"]',
+          '[class*="product_wrap"]', '[class*="productWrap"]'
+        ];
 
-          // 상품 상세 페이지 URL인지 확인
-          const isProductUrl = productPathKeywords.some(keyword => url.includes(keyword)) ||
-                             /\/[P|p]\d+/.test(url); // 상품 번호 패턴 (예: P12345)
+        // 가격 선택자들
+        const priceSelectors = [
+          '[class*="price"]', '[class*="Price"]',
+          '[class*="cost"]', '[class*="Cost"]',
+          '[class*="won"]', '[class*="Won"]'
+        ];
 
-          if (!isProductUrl) return;
+        // 상품 컨테이너 내부의 링크만 검색
+        const containers = productContainerSelectors
+          .map(selector => [...document.querySelectorAll(selector)])
+          .flat();
 
-          // 이미지 검색
-          const images = link.querySelectorAll('img');
-          let bestImage = null;
-          let maxArea = 0;
+        if (containers.length === 0) {
+          containers.push(document.body);
+        }
 
-          images.forEach(img => {
-            const src = img.src || img.getAttribute('data-original') || '';
-            if (!src) return;
+        containers.forEach(container => {
+          const links = [...container.querySelectorAll('a')];
+          
+          links.forEach(link => {
+            const url = link.href;
+            if (!url || !url.includes(baseUrl)) return;
 
-            // 제외할 이미지 키워드 체크
-            if (excludedKeywords.some(keyword => 
-              src.toLowerCase().includes(keyword.toLowerCase())
-            )) return;
+            // 상품 상세 페이지 URL인지 확인
+            const isProductUrl = productPathKeywords.some(keyword => url.includes(keyword)) ||
+                               /\/[P|p]\d+/.test(url);
 
-            // 이미지 크기 체크
-            const width = img.naturalWidth || img.width || parseInt(img.getAttribute('width') || '0');
-            const height = img.naturalHeight || img.height || parseInt(img.getAttribute('height') || '0');
-            
-            // 최소 크기 체크 (너무 작은 이미지 제외)
-            if (width < 100 || height < 100) return;
+            if (!isProductUrl) return;
 
-            // 이미지 비율 체크 (정사각형에 가까운 이미지 선호)
-            const ratio = width / height;
-            if (ratio < 0.5 || ratio > 2) return;
+            // 이미지 검색
+            const images = [...link.querySelectorAll('img')];
+            let bestImage = null;
+            let maxArea = 0;
 
-            const area = width * height;
-            if (area > maxArea) {
-              maxArea = area;
-              bestImage = img;
-            }
-          });
+            images.forEach(img => {
+              const src = img.src || img.getAttribute('data-original') || '';
+              if (!src) return;
 
-          if (!bestImage) return;
+              // 제외할 이미지 키워드 체크
+              if (excludedKeywords.some(keyword => 
+                src.toLowerCase().includes(keyword.toLowerCase())
+              )) return;
 
-          // 가격 추출
-          let price = null;
-          for (const selector of priceSelectors) {
-            const priceElement = link.querySelector(selector);
-            if (priceElement) {
-              const priceText = priceElement.textContent;
-              if (priceText) {
-                const matches = priceText.match(/[\d,]+/);
-                if (matches) {
-                  price = parseInt(matches[0].replace(/,/g, ''));
-                  break;
+              // 이미지 크기 체크
+              const width = img.naturalWidth || img.width || parseInt(img.getAttribute('width') || '0');
+              const height = img.naturalHeight || img.height || parseInt(img.getAttribute('height') || '0');
+              
+              // 최소 크기 체크 (너무 작은 이미지 제외)
+              if (width < 100 || height < 100) return;
+
+              // 이미지 비율 체크 (정사각형에 가까운 이미지 선호)
+              const ratio = width / height;
+              if (ratio < 0.5 || ratio > 2) return;
+
+              const area = width * height;
+              if (area > maxArea) {
+                maxArea = area;
+                bestImage = img;
+              }
+            });
+
+            if (!bestImage) return;
+
+            // 가격 추출
+            let price = null;
+            for (const selector of priceSelectors) {
+              const priceElement = link.querySelector(selector);
+              if (priceElement) {
+                const priceText = priceElement.textContent;
+                if (priceText) {
+                  const matches = priceText.match(/[\d,]+/);
+                  if (matches) {
+                    price = parseInt(matches[0].replace(/,/g, ''));
+                    break;
+                  }
                 }
               }
             }
-          }
 
-          // 썸네일 URL 정규화
-          let thumbnail = bestImage.getAttribute('data-original') || bestImage.src;
-          if (thumbnail.startsWith('//')) {
-            thumbnail = 'https:' + thumbnail;
-          } else if (!thumbnail.startsWith('http')) {
-            thumbnail = new URL(thumbnail, baseUrl).href;
-          }
+            // 썸네일 URL 정규화
+            let thumbnail = bestImage.getAttribute('data-original') || bestImage.src;
+            if (thumbnail.startsWith('//')) {
+              thumbnail = 'https:' + thumbnail;
+            } else if (!thumbnail.startsWith('http')) {
+              thumbnail = new URL(thumbnail, baseUrl).href;
+            }
 
-          items.push({ url, thumbnail, price });
+            items.push({ url, thumbnail, price });
+          });
         });
-      });
 
-      return items;
-    }, { baseUrl, excludedKeywords: EXCLUDED_IMAGE_KEYWORDS, productPathKeywords: PRODUCT_PATH_KEYWORDS });
+        return items;
+      },
+      { baseUrl, excludedKeywords: EXCLUDED_IMAGE_KEYWORDS, productPathKeywords: PRODUCT_PATH_KEYWORDS }
+    );
 
     await browser.close();
     // 요청된 개수만큼만 반환
-    return { products: products.slice(0, limit) };
+    return { products: (products || []).slice(0, limit) };
 
   } catch (error) {
     console.error(`Crawling error (attempt ${retryCount + 1}):`, error);
@@ -175,7 +177,23 @@ async function crawlWithRetry(url: string, baseUrl: string, limit: number, retry
       return crawlWithRetry(url, baseUrl, limit, retryCount + 1);
     }
     
-    throw error;
+    // 에러 메시지 상세화
+    let errorMessage = '크롤링 중 오류가 발생했습니다.';
+    if (error instanceof Error) {
+      if (error.message.includes('net::ERR_CONNECTION_TIMED_OUT') || error.message.includes('TimeoutError')) {
+        errorMessage = '사이트 연결 시간이 초과되었습니다. 사이트가 응답하지 않습니다.';
+      } else if (error.message.includes('net::ERR_CONNECTION_REFUSED')) {
+        errorMessage = '사이트에 연결할 수 없습니다. 사이트가 차단되었거나 접근이 거부되었습니다.';
+      } else if (error.message.includes('net::ERR_NAME_NOT_RESOLVED')) {
+        errorMessage = '사이트 주소를 찾을 수 없습니다. URL이 올바른지 확인해주세요.';
+      } else if (error.message.includes('net::ERR_ABORTED')) {
+        errorMessage = '페이지 로딩이 중단되었습니다. 사이트의 보안 설정을 확인해주세요.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    throw new Error(errorMessage);
   }
 }
 
@@ -186,6 +204,15 @@ export async function POST(req: Request) {
     if (!url || !baseUrl) {
       return NextResponse.json(
         { message: 'URL과 baseUrl은 필수 입력값입니다.' },
+        { status: 400 }
+      );
+    }
+
+    try {
+      new URL(url);
+    } catch {
+      return NextResponse.json(
+        { message: '올바른 URL 형식이 아닙니다.' },
         { status: 400 }
       );
     }

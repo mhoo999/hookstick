@@ -31,7 +31,6 @@ export default function UrlInput() {
     try {
       setIsLoading(true);
       setProducts([]);
-      setIsSiteListOpen(false);
 
       const allProducts: Product[] = [];
       const savedSites = localStorage.getItem(STORAGE_KEY);

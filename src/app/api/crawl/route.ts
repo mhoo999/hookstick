@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
     // 상품 목록 페이지 찾기
     let productListUrl = url;
-    if (!url.includes('product') && !url.includes('goods') && !url.includes('items')) {
+    if (!url.includes('product/list') && !url.includes('goods/list') && !url.includes('items/list')) {
       console.log('Searching for product list page...');
       const productListLinks = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('a'));
@@ -54,16 +54,28 @@ export async function POST(request: Request) {
               href.includes('goods/list') || 
               href.includes('items/list') ||
               href.includes('category') ||
-              href.includes('cate_no')
+              href.includes('cate_no') ||
+              href.includes('list.html') // 카페24 쇼핑몰용
             )
           );
       });
 
       if (productListLinks.length > 0) {
-        // 가장 긴 URL을 선택 (일반적으로 더 구체적인 상품 목록 페이지)
-        productListUrl = productListLinks.reduce((longest, current) => 
-          current.length > longest.length ? current : longest
+        // 카테고리 링크 우선 선택
+        const categoryLinks = productListLinks.filter(link => 
+          link.includes('cate_no') || 
+          link.includes('category')
         );
+        
+        if (categoryLinks.length > 0) {
+          productListUrl = categoryLinks[0];
+        } else {
+          // 가장 긴 URL을 선택 (일반적으로 더 구체적인 상품 목록 페이지)
+          productListUrl = productListLinks.reduce((longest, current) => 
+            current.length > longest.length ? current : longest
+          );
+        }
+        
         console.log('Found product list page:', productListUrl);
         await page.goto(productListUrl, { waitUntil: 'networkidle' });
         await page.waitForLoadState('domcontentloaded');
@@ -83,12 +95,17 @@ export async function POST(request: Request) {
     const products = await page.evaluate((baseUrl) => {
       const products = [];
       
-      // 여러 선택자 시도
+      // 여러 선택자 시도 (카페24 쇼핑몰용 추가)
       const selectors = [
         { container: '.prdList', items: '.prdList > li' },
         { container: '.item-list', items: '.item-list > .item' },
         { container: '.product-list', items: '.product-list > .product' },
-        { container: '#productList', items: '#productList > div' }
+        { container: '#productList', items: '#productList > div' },
+        { container: '.xans-product-listnormal', items: '.xans-product-listnormal > li' },
+        { container: '.xans-product-listpackage', items: '.xans-product-listpackage > li' },
+        { container: '.xans-product-list', items: '.xans-product-list > li' }, // 카페24 쇼핑몰용
+        { container: '.xans-product-listnormal', items: '.xans-product-listnormal > li' }, // 카페24 쇼핑몰용
+        { container: '.xans-product-listpackage', items: '.xans-product-listpackage > li' } // 카페24 쇼핑몰용
       ];
       
       let foundProducts: ProductElement[] = [];
@@ -102,6 +119,17 @@ export async function POST(request: Request) {
             break;
           }
         }
+      }
+
+      // 상품 목록을 찾지 못한 경우, 모든 li 요소에서 상품 찾기 시도
+      if (foundProducts.length === 0) {
+        const allItems = document.querySelectorAll('li');
+        foundProducts = Array.from(allItems).filter(item => {
+          const hasImage = item.querySelector('img');
+          const hasName = item.querySelector('.name, .prdName, h2, h3, h4');
+          const hasPrice = item.querySelector('.price, .prdPrice');
+          return hasImage && hasName && hasPrice;
+        });
       }
 
       // 디버그용 요소 카운트
@@ -119,7 +147,9 @@ export async function POST(request: Request) {
           const thumbnail = 
             item.querySelector('img')?.getAttribute('src') || 
             item.querySelector('.thumbnail img')?.getAttribute('src') ||
-            item.querySelector('.prdImg img')?.getAttribute('src');
+            item.querySelector('.prdImg img')?.getAttribute('src') ||
+            item.querySelector('img[data-nimg="fill"]')?.getAttribute('src') || // Next.js 이미지
+            item.querySelector('img.thumbs_hover')?.getAttribute('src'); // 썸네일 이미지
             
           const name = 
             item.querySelector('.name')?.textContent?.trim() ||
@@ -140,22 +170,39 @@ export async function POST(request: Request) {
             url = new URL(url, baseUrl).toString();
           }
 
-          if (thumbnail && name && price && url) {
-            // 이미지 URL 정리
-            let cleanThumbnail = thumbnail;
-            if (thumbnail.startsWith('http')) {
-              try {
-                const thumbnailUrl = new URL(thumbnail);
+          // 이미지 URL 정리
+          let cleanThumbnail = thumbnail;
+          if (thumbnail) {
+            try {
+              // Next.js 이미지 URL 처리
+              if (thumbnail.includes('/_next/image?')) {
+                const urlParams = new URLSearchParams(thumbnail.split('?')[1]);
+                const imageUrl = urlParams.get('url');
+                if (imageUrl) {
+                  cleanThumbnail = decodeURIComponent(imageUrl);
+                }
+              }
+              
+              // 상대 경로 처리
+              if (cleanThumbnail && cleanThumbnail.startsWith('//')) {
+                cleanThumbnail = `https:${cleanThumbnail}`;
+              } else if (cleanThumbnail && !cleanThumbnail.startsWith('http')) {
+                cleanThumbnail = `${baseUrl}${cleanThumbnail}`;
+              }
+
+              // 중복 도메인 제거
+              if (cleanThumbnail) {
+                const thumbnailUrl = new URL(cleanThumbnail);
                 if (thumbnailUrl.pathname.includes(thumbnailUrl.hostname)) {
                   cleanThumbnail = `${thumbnailUrl.origin}/${thumbnailUrl.pathname.replace(new RegExp(`^/?${thumbnailUrl.hostname}`), '')}`;
                 }
-              } catch (error) {
-                console.error('Error cleaning thumbnail URL:', error);
               }
-            } else {
-              cleanThumbnail = `${baseUrl}${thumbnail}`;
+            } catch (error) {
+              console.error('Error cleaning thumbnail URL:', error);
             }
+          }
 
+          if (cleanThumbnail && name && price && url) {
             products.push({
               thumbnail: cleanThumbnail,
               name,
@@ -187,8 +234,32 @@ export async function POST(request: Request) {
 
     // 상품을 찾지 못한 경우 스크린샷 캡처
     if (products.products.length === 0) {
-      await page.screenshot({ path: 'debug-screenshot.png' });
-      console.log('Captured debug screenshot');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const screenshotPath = `debug-screenshot-${timestamp}.png`;
+      await page.screenshot({ 
+        path: screenshotPath,
+        fullPage: true 
+      });
+      console.log('Captured debug screenshot:', screenshotPath);
+      
+      // 페이지의 HTML 구조도 저장
+      const html = await page.content();
+      console.log('Page HTML structure:', html.substring(0, 1000) + '...');
+      
+      // 모든 이미지 URL 수집
+      const imageUrls = await page.evaluate(() => {
+        const images = Array.from(document.querySelectorAll('img'));
+        return images.map(img => img.src);
+      });
+      console.log('Found image URLs:', imageUrls);
+
+      // 모든 링크 URL 수집
+      const linkUrls = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a'));
+        return links.map(link => link.href);
+      });
+      console.log('Found link URLs:', linkUrls);
+
       console.log('Debug info:', products.debugInfo);
     }
 

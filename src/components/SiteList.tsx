@@ -42,23 +42,35 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
   useEffect(() => {
     const savedSites = localStorage.getItem(STORAGE_KEY);
     if (savedSites) {
-      const loadedSites = JSON.parse(savedSites);
-      setSites(loadedSites);
-      // 모든 사이트 ID를 선택된 상태로 설정
-      onSelectedSitesChange(loadedSites.map((site: Site) => site.id));
+      try {
+        const loadedSites = JSON.parse(savedSites);
+        if (Array.isArray(loadedSites) && loadedSites.length > 0) {
+          setSites(loadedSites);
+          onSelectedSitesChange(loadedSites.map((site: Site) => site.id));
+        } else {
+          // 저장된 사이트가 없거나 잘못된 형식인 경우 빈 배열로 초기화
+          setSites([]);
+          onSelectedSitesChange([]);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+        }
+      } catch (error) {
+        console.error('Error loading sites:', error);
+        // JSON 파싱 오류가 발생한 경우 빈 배열로 초기화
+        setSites([]);
+        onSelectedSitesChange([]);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      }
     } else {
-      setSites(DEFAULT_SITES);
-      // 기본 사이트도 선택된 상태로 설정
-      onSelectedSitesChange(DEFAULT_SITES.map(site => site.id));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SITES));
+      // 로컬 스토리지에 저장된 사이트가 없는 경우 빈 배열로 초기화
+      setSites([]);
+      onSelectedSitesChange([]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
     }
   }, [onSelectedSitesChange]);
 
   // 사이트 목록 저장
   const saveSites = (updatedSites: Site[]) => {
     setSites(updatedSites);
-    // 저장할 때마다 모든 사이트를 선택된 상태로 설정
-    onSelectedSitesChange(updatedSites.map(site => site.id));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSites));
   };
 
@@ -104,7 +116,17 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
       {sites.map((site) => (
         <div
           key={site.id}
-          className="flex flex-col p-3 border border-white/10 rounded-lg hover:bg-white/5"
+          className={`flex flex-col p-3 border rounded-lg hover:bg-white/5 ${
+            selectedSites.includes(site.id)
+              ? 'border-blue-500 bg-blue-500/10'
+              : 'border-white/10'
+          }`}
+          onClick={() => {
+            const newSelectedSites = selectedSites.includes(site.id)
+              ? selectedSites.filter(id => id !== site.id)
+              : [...selectedSites, site.id];
+            onSelectedSitesChange(newSelectedSites);
+          }}
         >
           <div className="flex justify-between items-start">
             <div
@@ -116,7 +138,10 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
               <p className="text-sm text-white/60 break-all">{site.url}</p>
             </div>
             <button
-              onClick={() => handleDeleteSite(site.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteSite(site.id);
+              }}
               className="text-sm text-white/40 hover:text-white/80"
             >
               삭제

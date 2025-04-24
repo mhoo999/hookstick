@@ -132,12 +132,12 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
 
       <div className="flex gap-2">
         <input
-          type="url"
-          placeholder="사이트 URL을 입력하세요 (예: https://example.com)"
+          placeholder="사이트 URL을 입력하세요"
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
           onKeyPress={handleKeyPress}
           className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/40 focus:outline-none focus:border-white/20"
+          type="url"
         />
         <button
           onClick={handleAddSite}

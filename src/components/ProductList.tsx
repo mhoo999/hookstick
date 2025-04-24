@@ -50,7 +50,7 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {products.map((product, index) => (
         <a 
           key={index} 
@@ -59,7 +59,7 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
           rel="noopener noreferrer"
           className="block border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 hover:-translate-y-1 bg-white"
         >
-          <div className="relative h-48">
+          <div className="relative aspect-square">
             <Image
               src={product.thumbnail}
               alt="상품 이미지"

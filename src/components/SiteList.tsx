@@ -17,18 +17,8 @@ const cleanUrl = (url: string): string => {
   try {
     const urlObj = new URL(url);
     // URL 경로에서 중복된 도메인 제거
-    let path = urlObj.pathname;
-    // 도메인이 중복된 경우 제거
-    if (path.includes(urlObj.hostname)) {
-      path = path.replace(new RegExp(`^/?${urlObj.hostname}`), '');
-    }
-    // 이미지 URL인 경우 추가 처리
-    if (path.includes('/web/product/')) {
-      path = path.replace(/^\/+/, '');
-    }
-    // 슬래시가 없는 경우에만 추가
-    const separator = path.startsWith('/') ? '' : '/';
-    return `${urlObj.origin}${separator}${path}${urlObj.search}`;
+    const path = urlObj.pathname.replace(new RegExp(`^/?${urlObj.hostname}`), '');
+    return `${urlObj.origin}${path}${urlObj.search}`;
   } catch (error) {
     return url;
   }
@@ -42,35 +32,23 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
   useEffect(() => {
     const savedSites = localStorage.getItem(STORAGE_KEY);
     if (savedSites) {
-      try {
-        const loadedSites = JSON.parse(savedSites);
-        if (Array.isArray(loadedSites) && loadedSites.length > 0) {
-          setSites(loadedSites);
-          onSelectedSitesChange(loadedSites.map((site: Site) => site.id));
-        } else {
-          // 저장된 사이트가 없거나 잘못된 형식인 경우 빈 배열로 초기화
-          setSites([]);
-          onSelectedSitesChange([]);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
-        }
-      } catch (error) {
-        console.error('Error loading sites:', error);
-        // JSON 파싱 오류가 발생한 경우 빈 배열로 초기화
-        setSites([]);
-        onSelectedSitesChange([]);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
-      }
+      const loadedSites = JSON.parse(savedSites);
+      setSites(loadedSites);
+      // 모든 사이트 ID를 선택된 상태로 설정
+      onSelectedSitesChange(loadedSites.map((site: Site) => site.id));
     } else {
-      // 로컬 스토리지에 저장된 사이트가 없는 경우 빈 배열로 초기화
-      setSites([]);
-      onSelectedSitesChange([]);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      setSites(DEFAULT_SITES);
+      // 기본 사이트도 선택된 상태로 설정
+      onSelectedSitesChange(DEFAULT_SITES.map(site => site.id));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SITES));
     }
   }, [onSelectedSitesChange]);
 
   // 사이트 목록 저장
   const saveSites = (updatedSites: Site[]) => {
     setSites(updatedSites);
+    // 저장할 때마다 모든 사이트를 선택된 상태로 설정
+    onSelectedSitesChange(updatedSites.map(site => site.id));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSites));
   };
 

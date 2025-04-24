@@ -49,7 +49,12 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
               {product.name}
             </h3>
             <p className="text-gray-700 font-medium">
-              {product.price.split(' ')[0]}
+              {(() => {
+                const numStr = product.price.replace(/[^0-9]/g, '');
+                const halfLength = numStr.length / 2;
+                const firstHalf = numStr.slice(0, halfLength);
+                return Number(firstHalf).toLocaleString();
+              })()}원
             </p>
             <p className="text-sm text-gray-500">
               출처: Out of Line

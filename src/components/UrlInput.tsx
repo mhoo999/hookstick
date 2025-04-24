@@ -15,6 +15,7 @@ export default function UrlInput() {
   const [isSiteListOpen, setIsSiteListOpen] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
+  const [hasMore, setHasMore] = useState(false);
 
   // 페이지 로드 시 사이트 목록 가져오기
   useEffect(() => {
@@ -130,6 +131,11 @@ export default function UrlInput() {
     }
   };
 
+  const handleLoadMore = useCallback(() => {
+    // 현재는 추가 데이터를 로드하지 않음
+    setHasMore(false);
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-8">
       <div className="flex justify-between items-center">
@@ -195,7 +201,12 @@ export default function UrlInput() {
       </div>
 
       <div>
-        <ProductList products={products} isLoading={isLoading} />
+        <ProductList 
+          products={products} 
+          isLoading={isLoading} 
+          hasMore={hasMore}
+          onLoadMore={handleLoadMore}
+        />
       </div>
 
       {showCopiedToast && (

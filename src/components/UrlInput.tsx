@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { Product } from '@/types/product';
 import ProductList from './ProductList';
 import SiteList from './SiteList';
-import DayRangeSlider from './DayRangeSlider';
 import { Site } from '@/types/site';
 
 const DEFAULT_SITE: Site = {
@@ -19,7 +18,6 @@ const STORAGE_KEY = 'crawling-sites';
 export default function UrlInput() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [daysToSearch, setDaysToSearch] = useState(7);
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
   const [isSiteListOpen, setIsSiteListOpen] = useState(false);
 
@@ -65,7 +63,6 @@ export default function UrlInput() {
             },
             body: JSON.stringify({
               url: site.url,
-              daysToSearch,
               baseUrl: site.baseUrl
             }),
           });
@@ -99,13 +96,6 @@ export default function UrlInput() {
           alert(`${site.name} 크롤링 중 오류 발생: ${error instanceof Error ? error.message : '네트워크 오류가 발생했습니다.'}`);
         }
       }
-
-      // 모든 상품을 날짜순으로 정렬
-      allProducts.sort((a, b) => {
-        const dateA = a.date ? new Date(a.date).getTime() : 0;
-        const dateB = b.date ? new Date(b.date).getTime() : 0;
-        return dateB - dateA;
-      });
 
       setProducts(allProducts);
     } catch (error) {
@@ -150,10 +140,7 @@ export default function UrlInput() {
           )}
         </div>
 
-        <div className="flex justify-between items-center">
-          <div className="w-64">
-            <DayRangeSlider value={daysToSearch} onChange={setDaysToSearch} />
-          </div>
+        <div className="flex justify-end">
           <button
             onClick={handleCrawlStart}
             disabled={isLoading || selectedSites.length === 0}

@@ -3,8 +3,4 @@ export interface Site {
   name: string;
   url: string;
   baseUrl: string;
-}
-
-export interface CrawlConfig {
-  daysToSearch: number;
 } 

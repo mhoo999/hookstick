@@ -8,6 +8,29 @@ interface ProductListProps {
   isLoading: boolean;
 }
 
+// URL에서 도메인 이름 추출 함수
+function extractStoreName(url: string): string {
+  try {
+    const domain = new URL(url).hostname;
+    // 'm.' 또는 'www.' 제거
+    const cleanDomain = domain.replace(/^(m\.|www\.)/, '');
+    // '.co.kr' 또는 '.com' 등 제거
+    const storeName = cleanDomain.split('.')[0];
+    // 첫 글자를 대문자로
+    return storeName.charAt(0).toUpperCase() + storeName.slice(1);
+  } catch {
+    return '알 수 없음';
+  }
+}
+
+// 가격 포맷팅 함수
+function formatPrice(price: string | undefined): string {
+  if (!price) return '';
+  const numStr = price.replace(/[^0-9]/g, '');
+  if (!numStr) return '';
+  return `${Number(numStr).toLocaleString()}원`;
+}
+
 export default function ProductList({ products, isLoading }: ProductListProps) {
   if (isLoading) {
     return (
@@ -27,7 +50,7 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
       {products.map((product, index) => (
         <a 
           key={index} 
@@ -39,25 +62,17 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
           <div className="relative h-48">
             <Image
               src={product.thumbnail}
-              alt={product.name}
+              alt="상품 이미지"
               fill
               className="object-cover"
             />
           </div>
-          <div className="p-4 space-y-2 bg-white">
-            <h3 className="font-bold text-black text-lg leading-snug line-clamp-2 min-h-[3.5rem]">
-              {product.name}
-            </h3>
-            <p className="text-gray-700 font-medium">
-              {(() => {
-                const numStr = product.price.replace(/[^0-9]/g, '');
-                const halfLength = numStr.length / 2;
-                const firstHalf = numStr.slice(0, halfLength);
-                return Number(firstHalf).toLocaleString();
-              })()}원
+          <div className="p-2 bg-white space-y-1">
+            <p className="text-sm font-medium text-gray-700 text-center">
+              {product.price ? formatPrice(product.price) : ''}
             </p>
-            <p className="text-sm text-gray-500">
-              출처: Out of Line
+            <p className="text-xs text-gray-500 text-center">
+              {extractStoreName(product.url)}
             </p>
           </div>
         </a>

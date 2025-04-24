@@ -5,6 +5,7 @@ import { Product } from '@/types/product';
 import ProductList from './ProductList';
 import SiteList from './SiteList';
 import { Site } from '@/types/site';
+import ProductCountSlider from './ProductCountSlider';
 
 const STORAGE_KEY = 'crawling-sites';
 
@@ -16,6 +17,7 @@ export default function UrlInput() {
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [productCount, setProductCount] = useState(10);
 
   // 페이지 로드 시 사이트 목록 가져오기
   useEffect(() => {
@@ -88,7 +90,8 @@ export default function UrlInput() {
             },
             body: JSON.stringify({
               url: site.url,
-              baseUrl: site.baseUrl
+              baseUrl: site.baseUrl,
+              limit: productCount
             }),
           });
 
@@ -189,7 +192,8 @@ export default function UrlInput() {
           )}
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center">
+          <ProductCountSlider value={productCount} onChange={setProductCount} />
           <button
             onClick={handleCrawlStart}
             disabled={isLoading || selectedSites.length === 0}

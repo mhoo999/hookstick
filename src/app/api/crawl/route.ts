@@ -1,205 +1,203 @@
 import { NextResponse } from 'next/server';
-import { chromium } from 'playwright';
+import playwright from 'playwright';
 
-export async function POST(request: Request) {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+const MAX_RETRIES = 3;
+const TIMEOUT = 30000; // 30초
 
+interface Product {
+  url: string;
+  thumbnail: string;
+  price: number | null;
+}
+
+// 상품 이미지가 아닌 것들의 키워드
+const EXCLUDED_IMAGE_KEYWORDS = [
+  'logo', 'btn', 'button', 'icon', 'banner', 'ad_', 'nav_', 'menu',
+  'cart', 'search', 'close', 'prev', 'next', 'top', 'bottom', 'left', 'right',
+  'share', 'sns', 'social', 'kakao', 'naver', 'facebook', 'instagram',
+  'youtube', 'twitter', 'header', 'footer', 'background', 'bg_', 'popup',
+  'loading', 'spinner', 'arrow', 'dot', 'slide', 'blank', 'empty'
+];
+
+// 상품 이미지일 가능성이 높은 경로 키워드
+const PRODUCT_PATH_KEYWORDS = [
+  '/product/', '/goods/', '/item/', '/prod/', '/products/',
+  '/goods_images/', '/item_images/', '/product_images/',
+  '/shop/', '/shopping/', '/catalog/'
+];
+
+async function crawlWithRetry(url: string, baseUrl: string, limit: number, retryCount = 0): Promise<{ products: Product[] }> {
   try {
-    const { url, baseUrl } = await request.json();
-    console.log('Crawling URL:', url);
-    console.log('Base URL:', baseUrl);
-    
+    const browser = await playwright.chromium.launch({
+      headless: true
+    });
+
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-      viewport: { width: 390, height: 844 },
-      // 불필요한 리소스 차단
-      bypassCSP: true,
-      ignoreHTTPSErrors: true,
-      // 캐시 활성화
-      serviceWorkers: 'block',
-      // 네트워크 요청 최적화
-      extraHTTPHeaders: {
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-      }
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
 
     const page = await context.newPage();
     
-    try {
-      // 네트워크 요청 최적화
-      await page.route('**/*', (route) => {
-        const resourceType = route.request().resourceType();
-        // 불필요한 리소스 차단
-        if (['stylesheet', 'font', 'media'].includes(resourceType)) {
-          route.abort();
-        } else {
-          route.continue();
-        }
-      });
+    // 리소스 차단 설정
+    await page.route('**/*', (route) => {
+      const resourceType = route.request().resourceType();
+      if (['font', 'media'].includes(resourceType)) {
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
 
-      console.log('Navigating to page...');
-      await page.goto(url, { 
-        waitUntil: 'networkidle',
-        timeout: 30000
-      });
+    // 타임아웃 설정
+    await page.goto(url, {
+      timeout: TIMEOUT,
+      waitUntil: 'networkidle'
+    });
 
-      // JavaScript 로딩을 위한 대기
-      await page.waitForTimeout(5000);
+    // 상품 정보 추출
+    const products = await page.evaluate(({ baseUrl, excludedKeywords, productPathKeywords }) => {
+      const items: Product[] = [];
+      
+      // 상품 컨테이너 선택자들
+      const productContainerSelectors = [
+        '.prd_list', '.product_list', '.goods_list', '.item_list',
+        '[class*="product-list"]', '[class*="productList"]',
+        '[class*="goods-list"]', '[class*="goodsList"]',
+        '[class*="item-list"]', '[class*="itemList"]',
+        '[class*="product_wrap"]', '[class*="productWrap"]'
+      ];
 
-      // 페이지 스크롤하여 동적 로딩 유도
-      await page.evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight);
-      });
-      await page.waitForTimeout(2000);
+      // 가격 선택자들
+      const priceSelectors = [
+        '[class*="price"]', '[class*="Price"]',
+        '[class*="cost"]', '[class*="Cost"]',
+        '[class*="won"]', '[class*="Won"]'
+      ];
 
-      console.log('Page loaded, evaluating...');
-      const products = await page.evaluate((baseUrl: string) => {
-        // 모든 이미지 찾기
-        const images = Array.from(document.querySelectorAll('img'));
-        console.log('Total images found:', images.length);
+      // 상품 컨테이너 내부의 링크만 검색
+      const containers = productContainerSelectors
+        .map(selector => Array.from(document.querySelectorAll(selector)))
+        .flat();
 
-        return images
-          .filter(img => {
-            // 이미지 URL로 필터링
+      if (containers.length === 0) {
+        // 컨테이너를 찾지 못한 경우, 전체 문서에서 검색
+        containers.push(document.body);
+      }
+
+      containers.forEach(container => {
+        const links = container.querySelectorAll('a');
+        
+        links.forEach(link => {
+          const url = link.href;
+          if (!url || !url.includes(baseUrl)) return;
+
+          // 상품 상세 페이지 URL인지 확인
+          const isProductUrl = productPathKeywords.some(keyword => url.includes(keyword)) ||
+                             /\/[P|p]\d+/.test(url); // 상품 번호 패턴 (예: P12345)
+
+          if (!isProductUrl) return;
+
+          // 이미지 검색
+          const images = link.querySelectorAll('img');
+          let bestImage = null;
+          let maxArea = 0;
+
+          images.forEach(img => {
             const src = img.src || img.getAttribute('data-original') || '';
-            const isProductImage = !src.includes('btn_') && 
-                                 !src.includes('button') &&
-                                 !src.includes('icon') &&
-                                 !src.includes('logo') &&
-                                 !src.includes('banner') &&
-                                 !src.includes('spacer') &&
-                                 !src.includes('blank') &&
-                                 !src.includes('arrow') &&
-                                 !src.includes('nav') &&
-                                 !src.includes('menu') &&
-                                 !src.includes('cart') &&
-                                 !src.includes('search') &&
-                                 !src.includes('close') &&
-                                 !src.includes('prev') &&
-                                 !src.includes('next') &&
-                                 !src.includes('top') &&
-                                 !src.includes('bottom') &&
-                                 !src.includes('left') &&
-                                 !src.includes('right') &&
-                                 !src.includes('share') &&
-                                 !src.includes('sns') &&
-                                 !src.includes('social') &&
-                                 !src.includes('kakao') &&
-                                 !src.includes('naver') &&
-                                 !src.includes('facebook') &&
-                                 !src.includes('instagram') &&
-                                 !src.includes('youtube') &&
-                                 !src.includes('twitter');
+            if (!src) return;
 
-            // 이미지가 상품 목록 컨테이너 내부에 있는지 확인
-            const productListSelectors = [
-              '.prdList',
-              '.item-list',
-              '.product-list',
-              '.goods-list',
-              '.xans-product',
-              '[class*="product"]',
-              '[class*="prd"]',
-              '[class*="item"]'
-            ];
+            // 제외할 이미지 키워드 체크
+            if (excludedKeywords.some(keyword => 
+              src.toLowerCase().includes(keyword.toLowerCase())
+            )) return;
+
+            // 이미지 크기 체크
+            const width = img.naturalWidth || img.width || parseInt(img.getAttribute('width') || '0');
+            const height = img.naturalHeight || img.height || parseInt(img.getAttribute('height') || '0');
             
-            const isInProductList = productListSelectors.some(selector => 
-              img.closest(selector) !== null
-            );
+            // 최소 크기 체크 (너무 작은 이미지 제외)
+            if (width < 100 || height < 100) return;
 
-            // 이미지 경로에서 상품 이미지 패턴 확인
-            const isProductPath = src.includes('/product/') || 
-                                src.includes('/goods/') || 
-                                src.includes('/item/') ||
-                                /\/[P|p]\d+\//.test(src);  // P1234 같은 상품 번호 패턴
-
-            // 이미지가 링크 내부에 있는지 확인
-            const link = img.closest('a');
-            const isInLink = link !== null;
-            
-            // 링크 URL이 상품 페이지를 가리키는지 확인
-            const linkUrl = link?.href || '';
-            const isProductLink = linkUrl.includes('/product/') || 
-                                linkUrl.includes('/goods/') || 
-                                linkUrl.includes('/item/') ||
-                                /\/[P|p]\d+/.test(linkUrl);
-
-            // 이미지 크기로 필터링 (너무 작은 이미지는 제외)
-            const width = img.naturalWidth || img.width;
-            const height = img.naturalHeight || img.height;
-            const isLargeEnough = width > 100 && height > 100;
-
-            // 이미지 비율 확인 (정사각형에 가까운 이미지 선호)
+            // 이미지 비율 체크 (정사각형에 가까운 이미지 선호)
             const ratio = width / height;
-            const isSquarish = ratio > 0.7 && ratio < 1.3;
+            if (ratio < 0.5 || ratio > 2) return;
 
-            console.log('Image check:', {
-              src,
-              isProductImage,
-              isInProductList,
-              isProductPath,
-              isInLink,
-              isProductLink,
-              width,
-              height,
-              ratio,
-              isSquarish,
-              isLargeEnough
-            });
+            const area = width * height;
+            if (area > maxArea) {
+              maxArea = area;
+              bestImage = img;
+            }
+          });
 
-            return isProductImage && 
-                   isLargeEnough && 
-                   isSquarish &&
-                   isInLink && 
-                   (isInProductList || isProductPath || isProductLink);
-          })
-          .map(img => {
-            const link = img.closest('a');
-            let thumbnail = img.getAttribute('data-original') || img.src;
-            const url = link?.href || '';
+          if (!bestImage) return;
 
-            if (thumbnail) {
-              if (thumbnail.startsWith('//')) {
-                thumbnail = 'https:' + thumbnail;
-              } else if (!thumbnail.startsWith('http')) {
-                const domainRegex = /^https?:\/\/[^\/]+/;
-                thumbnail = thumbnail.replace(domainRegex, '');
-                thumbnail = thumbnail.replace(/\/+/g, '/');
-                if (!thumbnail.startsWith('/')) {
-                  thumbnail = '/' + thumbnail;
+          // 가격 추출
+          let price = null;
+          for (const selector of priceSelectors) {
+            const priceElement = link.querySelector(selector);
+            if (priceElement) {
+              const priceText = priceElement.textContent;
+              if (priceText) {
+                const matches = priceText.match(/[\d,]+/);
+                if (matches) {
+                  price = parseInt(matches[0].replace(/,/g, ''));
+                  break;
                 }
-                thumbnail = baseUrl + thumbnail;
               }
             }
+          }
 
-            return {
-              thumbnail,
-              url: url.startsWith('http') ? url : `${baseUrl}${url}`
-            };
-          })
-          .filter(product => product.thumbnail)
-          .slice(0, 20);
-      }, baseUrl);
+          // 썸네일 URL 정규화
+          let thumbnail = bestImage.getAttribute('data-original') || bestImage.src;
+          if (thumbnail.startsWith('//')) {
+            thumbnail = 'https:' + thumbnail;
+          } else if (!thumbnail.startsWith('http')) {
+            thumbnail = new URL(thumbnail, baseUrl).href;
+          }
 
-      console.log('Crawling completed. Found products:', products.length);
-      await page.close();
+          items.push({ url, thumbnail, price });
+        });
+      });
 
-      return NextResponse.json({ products });
-    } catch (error) {
-      console.error('Page evaluation error:', error);
-      throw error;
+      return items;
+    }, { baseUrl, excludedKeywords: EXCLUDED_IMAGE_KEYWORDS, productPathKeywords: PRODUCT_PATH_KEYWORDS });
+
+    await browser.close();
+    // 요청된 개수만큼만 반환
+    return { products: products.slice(0, limit) };
+
+  } catch (error) {
+    console.error(`Crawling error (attempt ${retryCount + 1}):`, error);
+    
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Retrying... (${retryCount + 1}/${MAX_RETRIES})`);
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+      return crawlWithRetry(url, baseUrl, limit, retryCount + 1);
     }
+    
+    throw error;
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const { url, baseUrl, limit = 20 } = await req.json();
+
+    if (!url || !baseUrl) {
+      return NextResponse.json(
+        { message: 'URL과 baseUrl은 필수 입력값입니다.' },
+        { status: 400 }
+      );
+    }
+
+    const result = await crawlWithRetry(url, baseUrl, limit);
+    return NextResponse.json(result);
+
   } catch (error) {
     console.error('Crawling error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { message: error instanceof Error ? error.message : '크롤링 중 오류가 발생했습니다.' },
       { status: 500 }
     );
-  } finally {
-    await browser.close();
   }
 } 

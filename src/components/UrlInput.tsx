@@ -31,6 +31,7 @@ export default function UrlInput() {
     try {
       setIsLoading(true);
       setProducts([]);
+      setIsSiteListOpen(false);
 
       const allProducts: Product[] = [];
       const savedSites = localStorage.getItem(STORAGE_KEY);
@@ -141,16 +142,9 @@ export default function UrlInput() {
           <button
             onClick={handleCrawlStart}
             disabled={isLoading || selectedSites.length === 0}
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                크롤링 중...
-              </>
-            ) : (
-              `${selectedSites.length}개 사이트 크롤링 시작`
-            )}
+            {selectedSites.length}개 사이트 탐색 시작
           </button>
         </div>
       </div>

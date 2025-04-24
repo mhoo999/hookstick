@@ -13,7 +13,7 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
     return (
       <div className="w-full text-center py-8">
         <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        <p className="mt-2 text-gray-600">크롤링 중...</p>
+        <p className="mt-2 text-gray-600">상품 찾는 중...</p>
       </div>
     );
   }
@@ -21,7 +21,7 @@ export default function ProductList({ products, isLoading }: ProductListProps) {
   if (!products.length) {
     return (
       <div className="w-full text-center py-8 text-gray-600">
-        크롤링된 상품이 없습니다.
+        탐색된 상품이 없습니다.
       </div>
     );
   }

@@ -9,16 +9,30 @@ interface SiteListProps {
   onSelectedSitesChange: (siteIds: string[]) => void;
 }
 
-const DEFAULT_SITES: Site[] = [
-  {
-    id: 'outofline',
-    name: 'Out of Line',
-    url: 'https://outofline.co.kr/product/list.html?cate_no=24',
-    baseUrl: 'https://outofline.co.kr'
-  }
-];
+const DEFAULT_SITES: Site[] = [];
 
 const STORAGE_KEY = 'crawling-sites';
+
+const cleanUrl = (url: string): string => {
+  try {
+    const urlObj = new URL(url);
+    // URL 경로에서 중복된 도메인 제거
+    let path = urlObj.pathname;
+    // 도메인이 중복된 경우 제거
+    if (path.includes(urlObj.hostname)) {
+      path = path.replace(new RegExp(`^/?${urlObj.hostname}`), '');
+    }
+    // 이미지 URL인 경우 추가 처리
+    if (path.includes('/web/product/')) {
+      path = path.replace(/^\/+/, '');
+    }
+    // 슬래시가 없는 경우에만 추가
+    const separator = path.startsWith('/') ? '' : '/';
+    return `${urlObj.origin}${separator}${path}${urlObj.search}`;
+  } catch (error) {
+    return url;
+  }
+};
 
 export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesChange }: SiteListProps) {
   const [sites, setSites] = useState<Site[]>([]);
@@ -62,7 +76,7 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
       const site: Site = {
         id: Date.now().toString(),
         name,
-        url: newUrl,
+        url: cleanUrl(newUrl),
         baseUrl
       };
 
@@ -75,10 +89,8 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
   };
 
   const handleDeleteSite = (siteId: string) => {
-    if (window.confirm('정말로 이 사이트를 삭제하시겠습니까?')) {
-      const updatedSites = sites.filter(site => site.id !== siteId);
-      saveSites(updatedSites);
-    }
+    const updatedSites = sites.filter(site => site.id !== siteId);
+    saveSites(updatedSites);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -116,7 +128,7 @@ export default function SiteList({ onSiteSelect, selectedSites, onSelectedSitesC
       <div className="flex gap-2">
         <input
           type="url"
-          placeholder="새 사이트 URL 입력"
+          placeholder="사이트 URL을 입력하세요 (예: https://example.com)"
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
           onKeyPress={handleKeyPress}

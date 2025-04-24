@@ -38,6 +38,38 @@ export async function POST(request: Request) {
     await page.goto(url, { waitUntil: 'networkidle' });
     await page.waitForLoadState('domcontentloaded');
 
+    // 상품 목록 페이지 찾기
+    let productListUrl = url;
+    if (!url.includes('product') && !url.includes('goods') && !url.includes('items')) {
+      console.log('Searching for product list page...');
+      const productListLinks = await page.evaluate(() => {
+        const links = Array.from(document.querySelectorAll('a'));
+        return links
+          .map(link => link.href)
+          .filter(href => 
+            href && 
+            !href.includes('#') && // 해시 URL 제외
+            (
+              href.includes('product/list') || 
+              href.includes('goods/list') || 
+              href.includes('items/list') ||
+              href.includes('category') ||
+              href.includes('cate_no')
+            )
+          );
+      });
+
+      if (productListLinks.length > 0) {
+        // 가장 긴 URL을 선택 (일반적으로 더 구체적인 상품 목록 페이지)
+        productListUrl = productListLinks.reduce((longest, current) => 
+          current.length > longest.length ? current : longest
+        );
+        console.log('Found product list page:', productListUrl);
+        await page.goto(productListUrl, { waitUntil: 'networkidle' });
+        await page.waitForLoadState('domcontentloaded');
+      }
+    }
+
     // 상품 목록 로딩 대기
     console.log('Waiting for products to load...');
     await page.waitForTimeout(2000); // 추가 대기 시간
@@ -109,8 +141,23 @@ export async function POST(request: Request) {
           }
 
           if (thumbnail && name && price && url) {
+            // 이미지 URL 정리
+            let cleanThumbnail = thumbnail;
+            if (thumbnail.startsWith('http')) {
+              try {
+                const thumbnailUrl = new URL(thumbnail);
+                if (thumbnailUrl.pathname.includes(thumbnailUrl.hostname)) {
+                  cleanThumbnail = `${thumbnailUrl.origin}/${thumbnailUrl.pathname.replace(new RegExp(`^/?${thumbnailUrl.hostname}`), '')}`;
+                }
+              } catch (error) {
+                console.error('Error cleaning thumbnail URL:', error);
+              }
+            } else {
+              cleanThumbnail = `${baseUrl}${thumbnail}`;
+            }
+
             products.push({
-              thumbnail: thumbnail.startsWith('http') ? thumbnail : `${baseUrl}${thumbnail}`,
+              thumbnail: cleanThumbnail,
               name,
               price: price.replace(/[^0-9]/g, ''),
               url,

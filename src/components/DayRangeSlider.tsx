@@ -10,7 +10,7 @@ export default function DayRangeSlider({ value, onChange }: DayRangeSliderProps)
     <div className="space-y-2">
       <div className="flex justify-between items-center">
         <label className="text-sm font-medium text-gray-700">
-          크롤링 기간 설정
+          기간 설정
         </label>
         <span className="text-sm text-gray-500">
           {value}일 전부터 현재까지

@@ -57,7 +57,7 @@ async function crawlWithRetry(url: string, baseUrl: string, limit: number, retry
     // 상품 정보 추출
     const products = await page.evaluate(
       ({ baseUrl, excludedKeywords, productPathKeywords }) => {
-        const items = [];
+        const items: Product[] = [];
         
         // 상품 컨테이너 선택자들
         const productContainerSelectors = [
@@ -99,7 +99,7 @@ async function crawlWithRetry(url: string, baseUrl: string, limit: number, retry
 
             // 이미지 검색
             const images = [...link.querySelectorAll('img')];
-            let bestImage = null;
+            let bestImage: HTMLImageElement | null = null;
             let maxArea = 0;
 
             images.forEach(img => {
@@ -148,11 +148,15 @@ async function crawlWithRetry(url: string, baseUrl: string, limit: number, retry
             }
 
             // 썸네일 URL 정규화
-            let thumbnail = bestImage.getAttribute('data-original') || bestImage.src;
-            if (thumbnail.startsWith('//')) {
-              thumbnail = 'https:' + thumbnail;
-            } else if (!thumbnail.startsWith('http')) {
-              thumbnail = new URL(thumbnail, baseUrl).href;
+            let thumbnail: string = '';
+            if (bestImage) {
+              const img = bestImage as HTMLImageElement;
+              thumbnail = img.getAttribute('data-original') || img.src;
+              if (thumbnail.startsWith('//')) {
+                thumbnail = 'https:' + thumbnail;
+              } else if (!thumbnail.startsWith('http')) {
+                thumbnail = new URL(thumbnail, baseUrl).href;
+              }
             }
 
             items.push({ url, thumbnail, price });

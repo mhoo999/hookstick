@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hookstick
 
-## Getting Started
+Hookstick은 Next.js 기반의 웹 크롤링/스크래핑 도구로, 다양한 쇼핑몰 상품 정보를 자동으로 수집할 수 있는 프로젝트입니다. Playwright를 활용하여 상품 이미지, 가격, 상세 URL 등을 추출합니다.
 
-First, run the development server:
+## 주요 기능
+- 다양한 쇼핑몰 상품 목록 크롤링 및 정보 추출
+- Playwright 기반의 안정적인 크롤링 (재시도, 타임아웃, 리소스 차단 등)
+- Next.js 15, React 19, TypeScript, TailwindCSS 적용
+- 커스텀 컴포넌트 및 API 구조화
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 폴더 구조
+```
+├── src
+│   ├── app           # Next.js 앱 엔트리포인트 및 페이지
+│   │   └── api       # API 라우트 (크롤링 엔드포인트 등)
+│   ├── components    # UI 컴포넌트
+│   ├── hooks         # 커스텀 React 훅
+│   ├── lib           # 유틸리티 함수
+│   └── types         # 타입 정의
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 설치 및 실행 방법
+1. 의존성 설치
+```bash
+npm install
+```
+2. 개발 서버 실행
+```bash
+npm run dev
+```
+3. 브라우저에서 [http://localhost:3000](http://localhost:3000) 접속
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 주요 스크립트
+- `npm run dev` : 개발 서버 실행
+- `npm run build` : 프로덕션 빌드
+- `npm run start` : 프로덕션 서버 실행
+- `npm run lint` : 코드 린트 검사
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## API 사용법
+### 상품 크롤링 엔드포인트
+- **POST** `/api/crawl`
+- **Body 예시**
+```json
+{
+  "url": "https://example.com/category",
+  "baseUrl": "https://example.com",
+  "limit": 20
+}
+```
+- **응답 예시**
+```json
+{
+  "products": [
+    {
+      "url": "https://example.com/product/123",
+      "thumbnail": "https://example.com/images/123.jpg",
+      "price": 19900
+    },
+    ...
+  ]
+}
+```
+- **설명**: 지정한 카테고리/리스트 URL에서 상품 정보를 최대 `limit`개까지 추출합니다. `baseUrl`은 도메인 기준입니다.
 
-## Learn More
+## 주요 의존성
+- next@15, react@19, playwright, puppeteer, axios, tailwindcss 등
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 참고
+- 본 프로젝트는 학습 및 연구 목적의 크롤링 도구입니다. 실제 서비스 적용 시 각 사이트의 robots.txt 및 이용약관을 반드시 준수하세요.
